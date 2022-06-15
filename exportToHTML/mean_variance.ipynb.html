@@ -1,0 +1,177 @@
+<html>
+<head>
+<title>mean_variance.ipynb</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+.s0 { color: #989fb1; font-style: italic;}
+.s1 { color: #994cc3; font-style: italic;}
+.s2 { color: #403f53;}
+.s3 { color: #994cc3;}
+.s4 { color: #403f53;}
+.s5 { color: #5f7e97;}
+.s6 { color: #c96765;}
+.s7 { color: #aa0982;}
+</style>
+</head>
+<body bgcolor="#fbfbfb">
+<table CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#c0c0c0" >
+<tr><td><center>
+<font face="Arial, Helvetica" color="#000000">
+mean_variance.ipynb</font>
+</center></td></tr></table>
+<pre><span class="s0">#%% 
+</span><span class="s1">import </span><span class="s2">pandas </span><span class="s1">as </span><span class="s2">pd</span>
+<span class="s1">import </span><span class="s2">numpy </span><span class="s1">as </span><span class="s2">np</span>
+<span class="s1">import </span><span class="s2">datetime </span><span class="s1">as </span><span class="s2">dt</span>
+<span class="s1">import </span><span class="s2">pandas_datareader</span><span class="s3">.</span><span class="s2">data </span><span class="s1">as </span><span class="s2">web</span>
+<span class="s1">import </span><span class="s2">yfinance </span><span class="s1">as </span><span class="s2">yf</span>
+
+<span class="s1">import </span><span class="s2">pypfopt </span><span class="s1">as </span><span class="s2">mvo</span>
+<span class="s1">from </span><span class="s2">pypfopt </span><span class="s1">import </span><span class="s2">efficient_frontier</span>
+<span class="s1">from </span><span class="s2">pypfopt </span><span class="s1">import </span><span class="s2">plotting</span>
+<span class="s1">import </span><span class="s2">cvxpy</span>
+<span class="s0">#%% md 
+</span><span class="s2">### Define Functions 
+</span><span class="s0">#%% 
+</span><span class="s1">def </span><span class="s2">get_stock_data_yahoo</span><span class="s4">(</span><span class="s2">tickers</span><span class="s5">, </span><span class="s2">date_from</span><span class="s5">, </span><span class="s2">date_to</span><span class="s4">)</span><span class="s3">:</span>
+    <span class="s2">stock_list </span><span class="s3">= </span><span class="s4">[]</span>
+    <span class="s1">for </span><span class="s2">i </span><span class="s1">in </span><span class="s2">range</span><span class="s4">(</span><span class="s2">len</span><span class="s4">(</span><span class="s2">tickers</span><span class="s4">))</span><span class="s3">:</span>
+        <span class="s0"># Read data from Yahoo</span>
+        <span class="s2">data </span><span class="s3">= </span><span class="s2">web</span><span class="s3">.</span><span class="s2">DataReader</span><span class="s4">(</span><span class="s2">tickers</span><span class="s4">[</span><span class="s2">i</span><span class="s4">]</span><span class="s5">, </span><span class="s6">'yahoo'</span><span class="s5">, </span><span class="s2">start</span><span class="s3">=</span><span class="s2">date_from</span><span class="s5">, </span><span class="s2">end</span><span class="s3">=</span><span class="s2">date_to</span><span class="s4">)</span>
+        <span class="s0"># Add stock ticker column</span>
+        <span class="s2">data</span><span class="s4">[</span><span class="s6">'ticker'</span><span class="s4">] </span><span class="s3">= </span><span class="s2">tickers</span><span class="s4">[</span><span class="s2">i</span><span class="s4">]</span>
+        <span class="s0"># Append current stock to the list</span>
+        <span class="s2">stock_list</span><span class="s3">.</span><span class="s2">append</span><span class="s4">(</span><span class="s2">data</span><span class="s4">)</span>
+
+    <span class="s0"># Combine all stocks in one DF</span>
+    <span class="s2">data </span><span class="s3">= </span><span class="s2">pd</span><span class="s3">.</span><span class="s2">concat</span><span class="s4">(</span><span class="s2">stock_list</span><span class="s4">)</span><span class="s3">.</span><span class="s2">reset_index</span><span class="s4">()</span>
+
+    <span class="s0"># Data Cleaning</span>
+    <span class="s2">data</span><span class="s4">[</span><span class="s6">'Date'</span><span class="s4">] </span><span class="s3">= </span><span class="s2">pd</span><span class="s3">.</span><span class="s2">to_datetime</span><span class="s4">(</span><span class="s2">data</span><span class="s4">[</span><span class="s6">'Date'</span><span class="s4">]</span><span class="s5">, </span><span class="s2">format</span><span class="s3">=</span><span class="s6">'%Y-%m-%d'</span><span class="s4">)</span>
+    <span class="s2">data </span><span class="s3">= </span><span class="s2">data</span><span class="s3">.</span><span class="s2">sort_values</span><span class="s4">(</span><span class="s2">by</span><span class="s3">=</span><span class="s4">[</span><span class="s6">'ticker'</span><span class="s5">, </span><span class="s6">'Date'</span><span class="s4">])</span>
+
+    <span class="s0"># Calculate returns using adjusted price</span>
+    <span class="s2">data</span><span class="s4">[</span><span class="s6">'daily_return'</span><span class="s4">] </span><span class="s3">= </span><span class="s2">data</span><span class="s3">.</span><span class="s2">groupby</span><span class="s4">([</span><span class="s6">'ticker'</span><span class="s4">])[</span><span class="s6">'Adj Close'</span><span class="s4">]</span><span class="s3">.</span><span class="s2">pct_change</span><span class="s4">(</span><span class="s2">fill_method</span><span class="s3">=</span><span class="s6">'ffill'</span><span class="s4">)</span>
+    <span class="s2">data </span><span class="s3">= </span><span class="s2">data</span><span class="s3">.</span><span class="s2">dropna</span><span class="s4">(</span><span class="s2">subset</span><span class="s3">=</span><span class="s4">[</span><span class="s6">'daily_return'</span><span class="s4">])</span>
+    <span class="s1">return </span><span class="s2">data</span>
+
+
+<span class="s1">def </span><span class="s2">get_correlation_matrix</span><span class="s4">(</span><span class="s2">df</span><span class="s4">)</span><span class="s3">:</span>
+    <span class="s2">asset_returns </span><span class="s3">= </span><span class="s2">df</span><span class="s3">.</span><span class="s2">pivot</span><span class="s4">(</span><span class="s2">index</span><span class="s3">=</span><span class="s6">'Date'</span><span class="s5">, </span><span class="s2">columns</span><span class="s3">=</span><span class="s6">'ticker'</span><span class="s5">, </span><span class="s2">values</span><span class="s3">=</span><span class="s4">[</span><span class="s6">'daily_return'</span><span class="s4">])</span>
+    <span class="s2">correlation_matrix </span><span class="s3">= </span><span class="s2">asset_returns</span><span class="s3">.</span><span class="s2">corr</span><span class="s4">()</span>
+    <span class="s1">return </span><span class="s2">correlation_matrix</span>
+
+
+<span class="s1">def </span><span class="s2">get_mvo_inputs</span><span class="s4">(</span><span class="s2">data</span><span class="s4">)</span><span class="s3">:</span>
+    <span class="s0"># Calculate expected returns by taking historical average</span>
+    <span class="s2">data</span><span class="s4">[</span><span class="s6">'year'</span><span class="s4">] </span><span class="s3">= </span><span class="s2">data</span><span class="s4">[</span><span class="s6">'Date'</span><span class="s4">]</span><span class="s3">.</span><span class="s2">dt</span><span class="s3">.</span><span class="s2">year</span>
+    <span class="s2">annual_return </span><span class="s3">= </span><span class="s2">data</span><span class="s3">.</span><span class="s2">groupby</span><span class="s4">([</span><span class="s6">'ticker'</span><span class="s5">, </span><span class="s6">'year'</span><span class="s4">])[</span><span class="s6">'daily_return'</span><span class="s4">]</span><span class="s3">.</span><span class="s2">apply</span><span class="s4">(</span><span class="s1">lambda </span><span class="s2">x</span><span class="s3">: </span><span class="s4">(</span><span class="s7">1 </span><span class="s3">+ </span><span class="s2">x</span><span class="s4">)</span><span class="s3">.</span><span class="s2">prod</span><span class="s4">() </span><span class="s3">- </span><span class="s7">1</span><span class="s4">)</span>
+    <span class="s2">expected_returns </span><span class="s3">= </span><span class="s2">annual_return</span><span class="s3">.</span><span class="s2">groupby</span><span class="s4">([</span><span class="s6">'ticker'</span><span class="s4">])</span><span class="s3">.</span><span class="s2">mean</span><span class="s4">()</span>
+
+    <span class="s0"># Cov Matrix</span>
+    <span class="s2">asset_returns </span><span class="s3">= </span><span class="s2">data</span><span class="s3">.</span><span class="s2">pivot</span><span class="s4">(</span><span class="s2">index</span><span class="s3">=</span><span class="s6">'Date'</span><span class="s5">, </span><span class="s2">columns</span><span class="s3">=</span><span class="s6">'ticker'</span><span class="s5">, </span><span class="s2">values</span><span class="s3">=</span><span class="s4">[</span><span class="s6">'daily_return'</span><span class="s4">])</span>
+    <span class="s2">cov_matrix </span><span class="s3">= </span><span class="s2">asset_returns</span><span class="s3">.</span><span class="s2">cov</span><span class="s4">() </span><span class="s3">* </span><span class="s7">252</span>
+    <span class="s1">return </span><span class="s2">expected_returns</span><span class="s5">, </span><span class="s2">cov_matrix</span>
+
+
+<span class="s1">def </span><span class="s2">get_mvo_max_sharpe_port_weight</span><span class="s4">(</span><span class="s2">expected_returns</span><span class="s5">, </span><span class="s2">cov_matrix</span><span class="s5">, </span><span class="s2">risk_free_rate</span><span class="s5">, </span><span class="s2">weight_bounds</span><span class="s3">=</span><span class="s4">(</span><span class="s7">0</span><span class="s5">, </span><span class="s7">1</span><span class="s4">)</span><span class="s5">, </span><span class="s2">solver</span><span class="s3">=</span><span class="s6">'ECOS'</span><span class="s4">)</span><span class="s3">:</span>
+    <span class="s2">ef </span><span class="s3">= </span><span class="s2">efficient_frontier</span><span class="s3">.</span><span class="s2">EfficientFrontier</span><span class="s4">(</span><span class="s2">expected_returns</span><span class="s5">, </span><span class="s2">cov_matrix</span><span class="s5">, </span><span class="s2">weight_bounds</span><span class="s5">, </span><span class="s2">solver</span><span class="s4">)</span>
+    <span class="s2">weights </span><span class="s3">= </span><span class="s2">ef</span><span class="s3">.</span><span class="s2">max_sharpe</span><span class="s4">(</span><span class="s2">risk_free_rate</span><span class="s4">)</span>
+    <span class="s2">weights </span><span class="s3">= </span><span class="s2">pd</span><span class="s3">.</span><span class="s2">DataFrame</span><span class="s3">.</span><span class="s2">from_dict</span><span class="s4">(</span><span class="s2">weights</span><span class="s5">, </span><span class="s2">orient</span><span class="s3">=</span><span class="s6">'index'</span><span class="s4">)</span>
+    <span class="s1">return </span><span class="s2">weights</span>
+
+
+<span class="s1">def </span><span class="s2">portfolio_performance</span><span class="s4">(</span><span class="s2">data</span><span class="s5">, </span><span class="s2">weights</span><span class="s5">, </span><span class="s2">risk_free_rate</span><span class="s4">)</span><span class="s3">:</span>
+    <span class="s0"># Join the stock weights to the data</span>
+    <span class="s2">data </span><span class="s3">= </span><span class="s2">data</span><span class="s3">.</span><span class="s2">merge</span><span class="s4">(</span><span class="s2">weights</span><span class="s5">, </span><span class="s2">how</span><span class="s3">=</span><span class="s6">'left'</span><span class="s5">, </span><span class="s2">left_on</span><span class="s3">=</span><span class="s6">'ticker'</span><span class="s5">, </span><span class="s2">right_index</span><span class="s3">=</span><span class="s1">True</span><span class="s4">)</span><span class="s3">.</span><span class="s2">rename</span><span class="s4">(</span><span class="s2">columns</span><span class="s3">=</span><span class="s4">{</span><span class="s7">0</span><span class="s3">:</span><span class="s6">'weight'</span><span class="s4">})</span>
+    <span class="s2">data</span><span class="s4">[</span><span class="s6">'contribution'</span><span class="s4">] </span><span class="s3">= </span><span class="s2">data</span><span class="s4">[</span><span class="s6">'daily_return'</span><span class="s4">] </span><span class="s3">* </span><span class="s2">data</span><span class="s4">[</span><span class="s6">'weight'</span><span class="s4">]</span>
+    <span class="s2">port_return </span><span class="s3">= </span><span class="s2">data</span><span class="s3">.</span><span class="s2">groupby</span><span class="s4">([</span><span class="s6">'Date'</span><span class="s4">])[</span><span class="s6">'contribution'</span><span class="s4">]</span><span class="s3">.</span><span class="s2">sum</span><span class="s4">()</span><span class="s3">.</span><span class="s2">reset_index</span><span class="s4">()</span><span class="s3">.</span><span class="s2">rename</span><span class="s4">(</span><span class="s2">columns</span><span class="s3">=</span><span class="s4">{</span><span class="s6">'contribution'</span><span class="s3">: </span><span class="s6">'port_return'</span><span class="s4">})</span>
+    <span class="s2">cumulative_return </span><span class="s3">= </span><span class="s4">(</span><span class="s2">port_return</span><span class="s4">[</span><span class="s6">'port_return'</span><span class="s4">] </span><span class="s3">+ </span><span class="s7">1</span><span class="s4">)</span><span class="s3">.</span><span class="s2">prod</span><span class="s4">() </span><span class="s3">- </span><span class="s7">1</span>
+
+    <span class="s0"># return, vol and sharpe</span>
+    <span class="s2">r </span><span class="s3">= </span><span class="s4">(</span><span class="s7">1</span><span class="s3">+</span><span class="s2">cumulative_return</span><span class="s4">)</span><span class="s3">**</span><span class="s4">(</span><span class="s7">1</span><span class="s3">/</span><span class="s7">9</span><span class="s4">)</span><span class="s3">-</span><span class="s7">1</span>
+    <span class="s2">vol </span><span class="s3">= </span><span class="s2">port_return</span><span class="s4">[</span><span class="s6">'port_return'</span><span class="s4">]</span><span class="s3">.</span><span class="s2">std</span><span class="s4">() </span><span class="s3">* </span><span class="s2">np</span><span class="s3">.</span><span class="s2">sqrt</span><span class="s4">(</span><span class="s7">252</span><span class="s4">)</span>
+    <span class="s2">s </span><span class="s3">= </span><span class="s4">(</span><span class="s2">r </span><span class="s3">- </span><span class="s2">risk_free_rate</span><span class="s4">) </span><span class="s3">/ </span><span class="s2">vol</span>
+
+    <span class="s0"># Convert to DF</span>
+    <span class="s2">performance_dict </span><span class="s3">= </span><span class="s4">{</span><span class="s6">'annualized_return'</span><span class="s3">: </span><span class="s2">r</span><span class="s5">, </span><span class="s6">'annualized_vol'</span><span class="s3">: </span><span class="s2">vol</span><span class="s5">, </span><span class="s6">'annualized_sharpe'</span><span class="s3">: </span><span class="s2">s</span><span class="s4">}</span>
+    <span class="s2">df </span><span class="s3">= </span><span class="s2">pd</span><span class="s3">.</span><span class="s2">DataFrame</span><span class="s3">.</span><span class="s2">from_dict</span><span class="s4">(</span><span class="s2">performance_dict</span><span class="s5">, </span><span class="s2">orient</span><span class="s3">=</span><span class="s6">'index'</span><span class="s4">)</span>
+
+    <span class="s1">return </span><span class="s2">df</span>
+<span class="s0">#%% md 
+</span><span class="s2"># 3 ETF: LQD, GOVT, RSP 
+</span><span class="s0">#%% md 
+</span><span class="s2">### Get Data for 3 ETF from 2012-11-09 to 2021-11-09 
+ 
+</span><span class="s0">#%% 
+</span><span class="s2">mvo_ticker_list </span><span class="s3">= </span><span class="s4">[</span><span class="s6">'LQD'</span><span class="s5">, </span><span class="s6">'GOVT'</span><span class="s5">, </span><span class="s6">'RSP'</span><span class="s4">]</span>
+<span class="s2">date_from </span><span class="s3">= </span><span class="s6">'2012-11-09'</span>
+<span class="s2">effective_date </span><span class="s3">= </span><span class="s6">'2021-11-09'</span>
+<span class="s2">df_mvo </span><span class="s3">= </span><span class="s2">get_stock_data_yahoo</span><span class="s4">(</span><span class="s2">mvo_ticker_list</span><span class="s5">, </span><span class="s2">date_from</span><span class="s5">, </span><span class="s2">date_to</span><span class="s3">=</span><span class="s2">effective_date</span><span class="s4">)</span>
+<span class="s2">df_mvo</span>
+<span class="s0">#%% md 
+</span><span class="s2">### Calculate Expected Return and Covariance for Optimization 
+</span><span class="s0">#%% 
+</span><span class="s2">expected_return</span><span class="s5">, </span><span class="s2">cov </span><span class="s3">= </span><span class="s2">get_mvo_inputs</span><span class="s4">(</span><span class="s2">df_mvo</span><span class="s4">)</span>
+<span class="s0">#%% md 
+</span><span class="s2">### Mean Variance Optimal Portfolio Weights - Max Sharpe 
+</span><span class="s0">#%% 
+# Set risk free rate as 30 year Treasury yield on 2021-11-09 (the date we run optimization)</span>
+<span class="s2">risk_free </span><span class="s3">= </span><span class="s7">0.0183</span>
+
+<span class="s2">constrained_weight </span><span class="s3">= </span><span class="s4">(</span><span class="s7">0 </span><span class="s5">,</span><span class="s7">1</span><span class="s4">)  </span><span class="s0"># No short selling</span>
+<span class="s2">mvo_port </span><span class="s3">= </span><span class="s2">get_mvo_max_sharpe_port_weight</span><span class="s4">(</span><span class="s2">expected_return</span><span class="s5">, </span><span class="s2">cov</span><span class="s5">, </span><span class="s2">risk_free_rate</span><span class="s3">=</span><span class="s2">risk_free</span><span class="s5">, </span><span class="s2">weight_bounds</span><span class="s3">=</span><span class="s2">constrained_weight</span><span class="s4">)</span>
+
+<span class="s0"># Show Optimal Weights</span>
+<span class="s2">round</span><span class="s4">(</span><span class="s2">mvo_port</span><span class="s5">, </span><span class="s7">3</span><span class="s4">)</span>
+<span class="s0">#%% md 
+</span><span class="s2">### Correlation Matrix 
+</span><span class="s0">#%% 
+</span><span class="s2">corr_m </span><span class="s3">= </span><span class="s2">get_correlation_matrix</span><span class="s4">(</span><span class="s2">df_mvo</span><span class="s4">)</span>
+<span class="s2">round</span><span class="s4">(</span><span class="s2">corr_m</span><span class="s5">, </span><span class="s7">3</span><span class="s4">)</span>
+<span class="s0">#%% md 
+</span><span class="s2">### Portfolio Performance - 3 ETF 
+</span><span class="s0">#%% 
+</span><span class="s2">performance </span><span class="s3">= </span><span class="s2">portfolio_performance</span><span class="s4">(</span><span class="s2">df_mvo</span><span class="s5">, </span><span class="s2">mvo_port</span><span class="s5">, </span><span class="s2">risk_free</span><span class="s4">)</span>
+<span class="s2">round</span><span class="s4">(</span><span class="s2">performance</span><span class="s5">, </span><span class="s7">3</span><span class="s4">)</span>
+<span class="s0">#%% md 
+</span>
+<span class="s0">#%% md 
+</span><span class="s2"># 4 ETF: LQD, GOVT, RSP, RWO 
+</span><span class="s0">#%% md 
+</span><span class="s2">### Get Data for 4 ETF from 2012-11-09 to 2021-11-09 
+</span><span class="s0">#%% 
+</span><span class="s2">mvo_ticker_list4 </span><span class="s3">= </span><span class="s4">[</span><span class="s6">'LQD'</span><span class="s5">, </span><span class="s6">'GOVT'</span><span class="s5">, </span><span class="s6">'RSP'</span><span class="s5">, </span><span class="s6">'RWO'</span><span class="s4">]</span>
+<span class="s2">date_from </span><span class="s3">= </span><span class="s6">'2012-11-09'</span>
+<span class="s2">effective_date </span><span class="s3">= </span><span class="s6">'2021-11-09'</span>
+<span class="s2">df_mvo4 </span><span class="s3">= </span><span class="s2">get_stock_data_yahoo</span><span class="s4">(</span><span class="s2">mvo_ticker_list4</span><span class="s5">, </span><span class="s2">date_from</span><span class="s5">, </span><span class="s2">date_to</span><span class="s3">=</span><span class="s2">effective_date</span><span class="s4">)</span>
+<span class="s2">df_mvo4</span>
+<span class="s0">#%% md 
+</span><span class="s2">### Calculate Expected Return and Covariance for Optimization 
+</span><span class="s0">#%% 
+</span><span class="s2">expected_return4</span><span class="s5">, </span><span class="s2">cov4 </span><span class="s3">= </span><span class="s2">get_mvo_inputs</span><span class="s4">(</span><span class="s2">df_mvo4</span><span class="s4">)</span>
+<span class="s0">#%% md 
+</span><span class="s2">### Mean Variance Optimal Portfolio Weights - Max Sharpe 
+</span><span class="s0">#%% 
+# Set risk free rate as 30 year Treasury yield on 2021-11-09 (the date we run optimization)</span>
+<span class="s2">risk_free </span><span class="s3">= </span><span class="s7">0.0183</span>
+
+<span class="s2">constrained_weight </span><span class="s3">= </span><span class="s4">(</span><span class="s7">0 </span><span class="s5">,</span><span class="s7">1</span><span class="s4">)  </span><span class="s0"># No short selling</span>
+<span class="s2">mvo_port4 </span><span class="s3">= </span><span class="s2">get_mvo_max_sharpe_port_weight</span><span class="s4">(</span><span class="s2">expected_return4</span><span class="s5">, </span><span class="s2">cov4</span><span class="s5">, </span><span class="s2">risk_free_rate</span><span class="s3">=</span><span class="s2">risk_free</span><span class="s5">, </span><span class="s2">weight_bounds</span><span class="s3">=</span><span class="s2">constrained_weight</span><span class="s4">)</span>
+
+<span class="s0"># Show Optimal Weights</span>
+<span class="s2">round</span><span class="s4">(</span><span class="s2">mvo_port4</span><span class="s5">, </span><span class="s7">4</span><span class="s4">)</span>
+<span class="s0">#%% md 
+</span><span class="s2">### Correlation Matrix 
+</span><span class="s0">#%% 
+</span><span class="s2">corr_m4 </span><span class="s3">= </span><span class="s2">get_correlation_matrix</span><span class="s4">(</span><span class="s2">df_mvo4</span><span class="s4">)</span>
+<span class="s2">round</span><span class="s4">(</span><span class="s2">corr_m4</span><span class="s5">, </span><span class="s7">2</span><span class="s4">)</span>
+<span class="s0">#%% md 
+</span><span class="s2">### Portfolio Performance - 4 ETF 
+</span><span class="s0">#%% 
+</span><span class="s2">performance4 </span><span class="s3">= </span><span class="s2">portfolio_performance</span><span class="s4">(</span><span class="s2">df_mvo4</span><span class="s5">, </span><span class="s2">mvo_port4</span><span class="s5">, </span><span class="s2">risk_free</span><span class="s4">)</span>
+<span class="s2">round</span><span class="s4">(</span><span class="s2">performance4</span><span class="s5">, </span><span class="s7">4</span><span class="s4">)</span>
+<span class="s0">#%% 
+</span></pre>
+</body>
+</html>
