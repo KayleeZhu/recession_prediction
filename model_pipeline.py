@@ -49,16 +49,17 @@ def get_parameter_distribution():
     """
     Define a dictionary of parameters distribution for each model
     """
-    param_dist = {'logistic': {'classifier__penalty': ['l1', 'l2', 'elasticnet'],
+    param_dist = {'logistic': {'classifier__penalty': ['elasticnet'],
                                'classifier__dual': [False],
                                'classifier__C': np.arange(0.3, 5, 0.5),
-                               'classifier__multi_class': ['auto', 'ovr', 'multinomial'],
-                               'classifier__max_iter': [100, 500, 1000, 1500, 2000, 3000]
+                               'classifier__multi_class': ['auto'],
+                               'classifier__max_iter': [100, 500, 1000, 1500, 2000, 3000],
+                               'classifier__solver': ['saga'],
+                               'classifier__l1_ratio': np.arange(0, 1.2, 0.2)
                                },
-
                   'svc': {'classifier__C': np.arange(0.3, 5, 0.5),
-                          'classifier__kernel': ['linear', 'poly', 'rbf', 'sigmoid', 'precomputed'],
-                          'classifier__degree': [2, 3],
+                          'classifier__kernel': ['linear', 'poly', 'rbf', 'sigmoid'],
+                          'classifier__degree': [1, 2, 3],
                           'classifier__gamma': ['scale', 'auto'],
                           'classifier__probability': [True]
                           }

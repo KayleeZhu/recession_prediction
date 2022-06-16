@@ -3,6 +3,7 @@ import numpy as np
 import os
 import pickle
 import itertools
+from pathlib import Path
 
 from sklearn.metrics import confusion_matrix, classification_report, roc_curve, roc_auc_score
 from sklearn import metrics
@@ -57,7 +58,7 @@ def features_experiment(model_type, data_dir, exp_dir):
     # Check if the folder directory exists for saving all the experiment results
     check_directory_exist(exp_dir)
     # Create sub folder for the model type
-    save_folder = f'{exp_dir}/{model_type}'
+    save_folder = Path(f'{exp_dir}') / Path(f'{model_type}')
     check_directory_exist(save_folder)
 
     score_method = 'f1_macro'
@@ -105,13 +106,14 @@ def features_experiment(model_type, data_dir, exp_dir):
             y_data = model.get_prediction(sub_all_df, y_true)
 
             # Save Info
-            exp_folder = f'{save_folder}/exp_{counter}'
+            exp_folder = Path(f'{save_folder}') / Path(f'exp_{counter}')
             check_directory_exist(exp_folder)
 
             # Model Metrics & Other Info
             metrics_dict = get_model_metrics(y_data[y_name], y_data['y_pred'])
             metrics_dict['exp_num'] = counter
-            pd.DataFrame.from_dict(metrics_dict, orient='index').to_csv(f'{exp_folder}/model_metrics.csv')
+            pd.DataFrame.from_dict(metrics_dict, orient='index').to_csv(
+                Path(f'{exp_folder}') / Path('model_metrics.csv'))
 
             info_dict = dict(exp_number=counter,
                              model_type=model_type,
@@ -128,41 +130,25 @@ def features_experiment(model_type, data_dir, exp_dir):
                 pickle.dump(model.pipeline, f)
 
 
-def read_experiment_results(model_type, exp_dir):
-    info_list = []
-    metrics_list = []
-    for i in range(1, 2305):
-        # save_folder = f'data_folder/experiments_in_sample/{model_type}/exp_{i}'
-        save_folder = f'{exp_dir}/{model_type}/exp_{i}'
-        info_path = f'{save_folder}/info.csv'
-        metrics_path = f'{save_folder}/model_metrics.csv'
-
-        info_df = pd.read_csv(info_path).set_index('Unnamed: 0').T
-        metrics_df = pd.read_csv(metrics_path).set_index('Unnamed: 0').T
-        info_list.append(info_df)
-        metrics_list.append(metrics_df)
-
-    all_info = pd.concat(info_list)
-    all_metrics = pd.concat(metrics_list)
-    return all_info, all_metrics
-
-
 def out_sample_nested_experiments(model_type, exp_list, insample_exp_dir, outsample_exp_dir):
-    df = pd.read_csv('data_folder/data/all_data.csv')  #.set_index('date').reset_index()
+    df = pd.read_csv('all_data.csv')  # .set_index('date').reset_index()
     # df = df.reset_index().copy()
     score_method = 'f1_macro'
     random_state = 1
     check_directory_exist(outsample_exp_dir)
     # save_folder = f'data_folder/experiments_out_sample/{model_type}'
-    save_folder = f'{outsample_exp_dir}/{model_type}'
+    save_folder = Path(outsample_exp_dir) / Path(f'{model_type}')
     check_directory_exist(save_folder)
 
     # Get Experiment info of the top models
-    all_info, all_metrics = read_experiment_results(model_type, insample_exp_dir)
+    all_info, all_metrics = read_experiment_results(model_type, exp_list, insample_exp_dir)
 
     for exp_num in exp_list:
-        mask = all_info['exp_number'] == str(int(exp_num))
-        feas = all_info.loc[mask, 'features'][0].replace('[', '').replace(']', '').replace(' ', '').replace("'", '').split(',')
+        exp_num = int(exp_num)
+        mask = all_info['exp_number'] == str(exp_num)
+        feas = all_info.loc[mask, 'features'][0].replace('[', '').replace(']', '').replace(' ', '').replace("'",
+                                                                                                            '').split(
+            ',')
         y_name = all_info.loc[mask, 'y_variable'][0]
         print(f'For exp {exp_num}:')
         print(f'Y is {y_name} & Features are: {feas}')
@@ -197,17 +183,19 @@ def out_sample_nested_experiments(model_type, exp_list, insample_exp_dir, outsam
             y_data = model.get_prediction(X_test, y_test)
 
             # Save Info
-            exp_folder = f'{save_folder}/exp_{exp_num}'
-            fold_path = f'{save_folder}/exp_{exp_num}/fold_{k}'
+            exp_folder = Path(save_folder) / Path(f'exp_{exp_num}')
+            fold_path = Path(save_folder) / Path(f'exp_{exp_num}') / Path(f'fold_{k}')
             check_directory_exist(exp_folder)
             check_directory_exist(fold_path)
-            y_data.to_csv(f'{fold_path}/y_data.csv')
+            y_data.to_csv(Path(fold_path) / Path('y_data.csv'))
 
             # Model Metrics & Other Info
             metrics_dict = get_model_metrics(y_data[y_name], y_data['y_pred'])
             metrics_dict['exp_num'] = exp_num
             metrics_dict['fold_num'] = k
-            pd.DataFrame.from_dict(metrics_dict, orient='index').to_csv(f'{fold_path}/model_metrics.csv')
+
+            model_metrics_save_path = Path(fold_path) / Path('model_metrics.csv')
+            pd.DataFrame.from_dict(metrics_dict, orient='index').to_csv(model_metrics_save_path)
 
             info_dict = dict(exp_number=exp_num,
                              fold_num=k,
@@ -219,28 +207,46 @@ def out_sample_nested_experiments(model_type, exp_list, insample_exp_dir, outsam
                              train_ind=train_ind,
                              test_ind=test_ind
                              )
-            pd.DataFrame.from_dict(info_dict, orient='index').to_csv(f'{fold_path}/info.csv')
+            info_save_path = Path(fold_path) / Path('info.csv')
+            pd.DataFrame.from_dict(info_dict, orient='index').to_csv(info_save_path)
             # pd.DataFrame(info_dict).to_csv(f'{save_folder}/info.csv')
 
             # Save Model
-            filename = f'{fold_path}/model.pkl'
+            filename = Path(fold_path) / Path('model.pkl')
             with open(filename, 'wb') as f:
                 pickle.dump(model, f)
 
     print('done')
 
 
-def read_out_sample_results(model_type, exp_list, exp_dir):
-    # Get Experiment info of the top models
-    all_info, all_metrics = read_experiment_results(model_type, exp_dir)
-
+def read_experiment_results(model_type, exp_list, exp_dir):
     info_list = []
     metrics_list = []
     for i in exp_list:
+        i = int(i)
+        save_folder = Path(exp_dir) / Path(f'{model_type}') / Path(f'exp_{i}')
+        info_path = Path(save_folder) / Path('info.csv')
+        metrics_path = Path(save_folder) / Path('model_metrics.csv')
+
+        info_df = pd.read_csv(info_path).set_index('Unnamed: 0').T
+        metrics_df = pd.read_csv(metrics_path).set_index('Unnamed: 0').T
+        info_list.append(info_df)
+        metrics_list.append(metrics_df)
+
+    all_info = pd.concat(info_list)
+    all_metrics = pd.concat(metrics_list)
+    return all_info, all_metrics
+
+
+def read_out_sample_results(model_type, exp_list, exp_dir):
+    info_list = []
+    metrics_list = []
+    for i in exp_list:
+        i = int(i)
         for k in range(0, 5):
-            save_folder = f'{exp_dir}/{model_type}/exp_{i}/fold_{k}'
-            info_path = f'{save_folder}/info.csv'
-            metrics_path = f'{save_folder}/model_metrics.csv'
+            save_folder = Path(exp_dir) / Path(model_type) / Path(f'exp_{i}') / Path(f'fold_{k}')
+            info_path = Path(save_folder) / Path('info.csv')
+            metrics_path = Path(save_folder) / Path('model_metrics.csv')
 
             info_df = pd.read_csv(info_path).set_index('Unnamed: 0').T
             metrics_df = pd.read_csv(metrics_path).set_index('Unnamed: 0').T

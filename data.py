@@ -150,6 +150,8 @@ def data_stock_market():
     #                                   date_to='2022-03-31',
     #                                   interval='d')[['Date', 'Adj Close']]
     data_stock = pd.read_csv('sp500_daily_data.csv')
+    data_stock['Date'] = pd.to_datetime(data_stock['Date'])
+
     data_stock = daily_to_monthly_yahoo(data_stock).rename(columns={'Date': 'date',
                                                                     'Adj Close': 'sp500'})
     for i in [1, 3, 6, 12]:
@@ -170,6 +172,8 @@ def data_volatility():
     #                                   date_to='2022-03-31',
     #                                   interval='d')[['Date', 'Adj Close']]
     data_stock = pd.read_csv('sp500_daily_data.csv')
+    data_stock['Date'] = pd.to_datetime(data_stock['Date'])
+
     data_stock['return'] = data_stock['Adj Close'].pct_change() * 100
     data_stock['vol_30d'] = data_stock['return'].rolling(30).std()
     # Transform to monthly data
